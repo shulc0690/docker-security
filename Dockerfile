@@ -1,15 +1,20 @@
-FROM ubuntu:22.04
+FROM debian:12.5-slim
 
-# Встановлення curl без перевірки checksum
-RUN apt-get update && apt-get install -y curl
+LABEL maintainer="student@example.com"
+LABEL description="Безпечний Dockerfile для лабораторної перевірки"
 
-# Відсутність користувача — контейнер працює як root
-# Відсутність HEALTHCHECK
-# Відкритий порт без пояснення
-EXPOSE 80
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Відсутність COPY — неочевидне джерело файлів
-ADD . /app
+# Створення непривілейованого користувача
+RUN useradd -m -s /bin/bash safeuser
+USER safeuser
 
-WORKDIR /app
-CMD ["bash", "start.sh"]
+WORKDIR /home/safeuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl --fail https://localhost:8443/health || exit 1
+
+CMD ["curl", "--version"]
