@@ -1,0 +1,79 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  DOCKERFILE_PATH: Dockerfile
+  IMAGE_NAME: insecure-image
+
+jobs:
+  hadolint:
+    name: Lint Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Run hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ env.DOCKERFILE_PATH }}
+        continue-on-error: true
+
+  trivy:
+    name: Scan with Trivy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+      
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  dockle:
+    name: Audit Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }} -f ${{ env.DOCKERFILE_PATH }} .
+      
+      - name: Save Docker image
+        run: |
+          docker save ${{ env.IMAGE_NAME }} -o dockle-image.tar
+      
+      - name: Run Dockle audit
+        run: |
+          docker run --rm -v $PWD:/mnt goodwithtech/dockle:latest \
+            --input /mnt/dockle-image.tar \
+            --format json \
+            --output /mnt/dockle-report.json
+      
+      - name: Upload Dockle report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: dockle-report
+          path: dockle-report.json
+          retention-days: 7

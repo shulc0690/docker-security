@@ -1,0 +1,66 @@
+stages:
+  - lint
+  - scan
+  - audit
+
+variables:
+  DOCKERFILE_PATH: "Dockerfile"
+  IMAGE_NAME: "insecure-image"
+
+
+hadolint:
+  stage: lint
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker run --rm -v $PWD:/mnt hadolint/hadolint hadolint /mnt/$DOCKERFILE_PATH
+  allow_failure: true
+
+trivy:
+  stage: scan
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker run --rm -v $PWD:/mnt aquasec/trivy config /mnt/$DOCKERFILE_PATH
+  allow_failure: false
+
+#trivy:
+ # stage: scan
+ # image: aquasec/trivy:latest
+ # script:
+ #   - trivy config $DOCKERFILE_PATH
+ # allow_failure: false
+
+dockle:
+  stage: audit
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKERFILE_PATH: "Dockerfile"
+  timeout: 30 minutes
+  script:
+    - export DOCKER_BUILDKIT=0
+    - docker build -t insecure-image -f $DOCKERFILE_PATH .
+    - docker save insecure-image -o dockle-image.tar
+    - docker run --rm -v $PWD:/mnt goodwithtech/dockle --input /mnt/dockle-image.tar --format json --output /mnt/dockle-report.json
+  artifacts:
+    paths:
+      - dockle-report.json
+    expire_in: 1 week
+  allow_failure: false
+
+#dockle:
+#  stage: audit
+#  image: docker:latest
+#  services:
+#    - docker:dind
+#  script:
+#    - docker run --rm -v $PWD:/mnt goodwithtech/dockle dockle --exit-code 1 --format json --output /mnt/dockle-report.json /mnt/$DOCKERFILE_PATH
+#  artifacts:
+#    paths:
+#      - dockle-report.json
+#    expire_in: 1 week
+#  allow_failure: false
